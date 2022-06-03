@@ -12,6 +12,7 @@ class Card extends Component {
     this.closeMenu = this.closeMenu.bind(this);
   }
   
+  //not needed any longer
   showMenu(event) {
     event.preventDefault();
     
@@ -20,6 +21,7 @@ class Card extends Component {
     });
   }
   
+  //not needed
   closeMenu(event) {
     
     if (!this.dropdownMenu.contains(event.target)) {
@@ -32,7 +34,7 @@ class Card extends Component {
   }
 
   render() {
-    return (
+    /*return (
       <div>
         <button onClick={this.showMenu}>
           Select Team
@@ -47,15 +49,29 @@ class Card extends Component {
                   this.dropdownMenu = element;
                 }}
               >
-                <button onClick={this.props.selectTeam1}> Team 1</button>
-                <button onClick={this.props.selectTeam2}> Team 2 </button>
-                <button onClick={this.props.selectTeam3}> Team 3 </button>
+                <label><input id="Team1Check" type="checkbox" onClick={()=>this.props.selectTeam()}></input>Team 1</label>
+                <label><input id="Team2Check" type="checkbox" onClick={()=>this.props.selectTeam()}></input>Team 2</label>
+                <label><input id="Team3Check" type="checkbox" onClick={()=>this.props.selectTeam()}></input>Team 3</label>
               </div>
             )
             : (
               null
             )
         }
+      </div>
+    );*/
+    return (
+      <div>
+        <span>
+          <label id="Team1"><input id="Team1Check" type="checkbox" onClick={()=>this.props.update(1)}></input>Team 1</label>
+          <label id="Team2"><input id="Team2Check" type="checkbox" onClick={()=>this.props.update(2)}></input>Team 2</label>
+          <label id="Team3"><input id="Team3Check" type="checkbox" onClick={()=>this.props.update(3)}></input>Team 3</label>
+        </span>
+        <span>
+          <button onClick={()=>this.props.simulate(5)}>
+            Start Simulation
+          </button>
+        </span>
       </div>
     );
   }

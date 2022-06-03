@@ -11,14 +11,15 @@ import XYZ from 'ol/source/XYZ'
 import {transform, fromLonLat} from 'ol/proj'
 import {toStringXY} from 'ol/coordinate';
 
-import {Circle as CircleStyle, Fill, Stroke, Style} from 'ol/style';
-import {MultiPoint, Point} from 'ol/geom';
+import {Circle as CircleStyle, Fill, Icon, Stroke, Style} from 'ol/style';
+import {LineString, MultiPoint, Point} from 'ol/geom';
 import {getVectorContext} from 'ol/render';
 import { none } from 'ol/centerconstraint';
 
 import { Feature } from 'ol';
 import Card from './DropdownMenu'
 import Text from 'ol/style/Text';
+import { createOrUpdate } from 'ol/tilecoord';
 
 function MapWrapper(props) {
 
@@ -26,6 +27,44 @@ function MapWrapper(props) {
   const [ map, setMap ] = useState()
   const [ featuresLayer, setFeaturesLayer ] = useState()
   const [ selectedCoord , setSelectedCoord ] = useState()
+
+  // array of team colors
+  const colorArray = ['red', 'blue', 'green', 'black']
+
+  const TEAM_COUNT = 10;
+  const MAX_MEMBER_COUNT = 500;
+  
+  // color the labels on the checkbox labels according to colorArray
+  var num = 1;
+  var label_id = 'Team' + num;
+  while(document.getElementById(label_id) != undefined){
+    document.getElementById(label_id).style.color = colorArray[num-1];
+
+    num++;
+    label_id = 'Team' + num;
+  }
+
+  // sample coords used
+  const sampleLat = -120.420219;
+  const sampleLatRef = -118.807386;
+  const sampleLong = 34.646236;
+  const sampleLongRef = 35.440643;
+
+  // animation
+  let route = new Array(MAX_MEMBER_COUNT).fill(undefined);
+  let lastTime;
+  let distance = new Array(MAX_MEMBER_COUNT).fill(0);
+  let animating = false;
+  let routeFeature = new Array(MAX_MEMBER_COUNT).fill(new Feature());
+  let startMarker = new Array(MAX_MEMBER_COUNT).fill(undefined);
+  let endMarker = new Array(MAX_MEMBER_COUNT).fill(undefined);
+  let position = new Array(MAX_MEMBER_COUNT).fill(0);
+  const geoMarker = new Feature({
+    type: 'geoMarker',
+    geometry: new Point(30,30),
+  });
+
+  let vectorLayer;
 
   // coord for 3 teams
   // const [ pointsCoordT1, setPointsCoordT1 ] = useState()
@@ -46,13 +85,27 @@ function MapWrapper(props) {
   }
 
   let i;
+  const features_all = [];
+  for (i = 0; i < 30; i++) {
+    features_all.push(new Feature({
+      geometry: new Point(fromLonLat([
+        getRandomNumber(sampleLat,sampleLatRef), getRandomNumber(sampleLong, sampleLongRef)
+        // -121.505173, 37.808917
+      ])),
+      number_point: i,
+      team: Math.floor(i / TEAM_COUNT) + 1,
+      is_captain: (i % 10 === 0)
+    }));
+  }
+
   const features1 = [];
   for (i = 0; i < 10; i++) {
     features1.push(new Feature({
       geometry: new Point(fromLonLat([
-        getRandomNumber(-121.920219, -120.207386), getRandomNumber(35.646236, 36.440643)
+        getRandomNumber(sampleLat, sampleLatRef), getRandomNumber(sampleLong, sampleLongRef)
         // -121.505173, 37.808917
-      ]))
+      ])),
+      number_point: i
     }));
   }
 
@@ -60,9 +113,10 @@ function MapWrapper(props) {
   for (i = 0; i < 10; i++) {
     features2.push(new Feature({
       geometry: new Point(fromLonLat([
-        getRandomNumber(-121.920219, -120.207386), getRandomNumber(35.646236, 36.440643)
+        getRandomNumber(sampleLat, sampleLatRef), getRandomNumber(sampleLong, sampleLongRef)
         // -121.505173, 37.808917
-      ]))
+      ])),
+      number_point: i + 10
     }));
   }
 
@@ -70,9 +124,10 @@ function MapWrapper(props) {
   for (i = 0; i < 10; i++) {
     features3.push(new Feature({
       geometry: new Point(fromLonLat([
-        getRandomNumber(-121.920219, -120.207386), getRandomNumber(35.646236, 36.440643)
+        getRandomNumber(sampleLat, sampleLatRef), getRandomNumber(sampleLong, sampleLongRef)
         // -121.505173, 37.808917
-      ]))
+      ])),
+      number_point: i + 20
     }));
   }
 
@@ -160,6 +215,7 @@ function MapWrapper(props) {
   },[])*/
 
   // map click handler
+  // not used currently
   const handleMapClick = (event) => {
     
     // get clicked coordinate using mapRef to access current React state inside OpenLayers callback
@@ -176,77 +232,197 @@ function MapWrapper(props) {
     
   }
 
-  const selectTeam1 = () => {
-
-    map.removeLayer(featuresLayer);
-    /* const FeaturesLayer1 = new VectorLayer({
-      source: new VectorSource({features: features1}),
-      // adding the style and plot
-      style: new Style({
-        image: new CircleStyle({
-          radius: 5,
-          fill: new Fill({color: 'yellow'}),
-          stroke: new Stroke({color: 'red', width: 1}),
-          text: "3"
-        }),
-      })
-    }) */
-
-    const FeaturesLayer1 = new VectorLayer({
-      source: new VectorSource({features: features1}),
-      // adding the style and plot
-      style: new Style({
-        image: new CircleStyle({
-          radius: 5,
-          fill: new Fill({color: 'transparent'}),
-          stroke: new Stroke({color: 'red', width: 1}),
-        }),
-        text: new Text({
-          text: "Team 1",
-          offsetX: 10,
-          offsetY: 10
-        })
-      })
-    })
-
-    map.addLayer(FeaturesLayer1);
-    setFeaturesLayer(FeaturesLayer1);
-
-  }
-  const selectTeam2 = () => {
-
-    map.removeLayer(featuresLayer);
-    const FeaturesLayer2 = new VectorLayer({
-      source: new VectorSource({features: features2}),
-      // adding the style and plot
-      style: new Style({
-        image: new CircleStyle({
-          radius: 5,
-          fill: new Fill({color: 'blue'}),
-          stroke: new Stroke({color: 'red', width: 1}),
-        }),
+  // Function that dictates how each location point will be styled
+  // Color/Text depends on team number, found in colorArray
+  // Fill/Radius depends on captain status
+  // - feature is the current feature being styled, 
+  // - with attributes number_point, team, is_captain
+  function styleFunction(feature){
+    const number_point = feature.get('number_point');
+    const team = feature.get('team');
+    // console.log('Point ' + number_point + ': Team ' + team)
+    var stroke = new Stroke({color: colorArray[team - 1], width: 2});
+    var text = "Team " + team;
+    var fill;
+    var radius;
+    if(feature.get('is_captain')){
+      fill = new Fill({color: 'black'});
+      radius = 8;
+    } else {
+      fill = new Fill({color: 'transparent'});
+      radius = 4;
+    }
+    return new Style({
+      image: new CircleStyle({
+        radius: radius,
+        fill: fill,
+        stroke: stroke,
+      }),
+      text: new Text({
+        text: text,
+        offsetX: 10,
+        offsetY: 10
       })
     })
-    map.addLayer(FeaturesLayer2);
-    setFeaturesLayer(FeaturesLayer2);
-
   }
 
-  const selectTeam3 = () => {
-    map.removeLayer(featuresLayer);
-    const FeaturesLayer3 = new VectorLayer({
-      source: new VectorSource({features: features3}),
-      // adding the style and plot
-      style: new Style({
-        image: new CircleStyle({
-          radius: 5,
-          fill: new Fill({color: 'green'}),
-          stroke: new Stroke({color: 'red', width: 1}),
-        }),
-      })
-    })
-    map.addLayer(FeaturesLayer3);
-    setFeaturesLayer(FeaturesLayer3);
+  // Gets the features that should be drawn from features_all
+  // - checkedArray is an array containing the team numbers to draw
+  function getFeatures(checkedArray){
+    const features = [];
+
+    for(let i = 0; i < features_all.length; i++){
+      let feature_team = Math.floor(i / TEAM_COUNT) + 1
+      if(checkedArray.indexOf(feature_team) !== -1){
+        features.push(features_all[i]);
+      }
+    }
+    return features;
+  }
+
+  // Update the drawn features
+  // - checks which features to draw by building an array of checked teams
+  // - updates the layer with a new source and style
+  function update(zoom_to=-1) {
+    const checkedArray = [];
+
+    //get checkbox_count
+    var i = 1;
+    var check_id = 'Team' + i + 'Check';
+    while(document.getElementById(check_id) != undefined){
+      const checked = document.getElementById(check_id).checked;
+      if(checked){ checkedArray.push(i) }
+
+      i++;
+      check_id = 'Team' + i + 'Check';
+    }
+    console.log('Checked Teams: ' + checkedArray);
+    const features = getFeatures(checkedArray);
+    const source = new VectorSource({features: features});
+
+    // zoom in on the selected team
+    featuresLayer.once('change', function() {
+      if(zoom_to != -1 && checkedArray.indexOf(zoom_to) != -1){
+        var view = map.getView();
+        view.animate({
+          center: features_all[(zoom_to - 1)*TEAM_COUNT].getGeometry().getCoordinates(),
+          zoom: 7
+        });
+      }
+    });
+
+    featuresLayer.setSource(source);
+    featuresLayer.setStyle(styleFunction);
+  }
+
+  // Given a geojson format (data), set the features list to contain
+  // the new locations inside data
+  // TODO: breaks if data['coordinates'] is longer than features??
+  function updateLocation(data){
+    let count = 0;
+    for (let coord of data['coordinates']){
+      
+
+      // create a line between former and future points
+      const former_coords = features_all[count].getGeometry().getCoordinates()
+      const new_coords = fromLonLat([coord[0], coord[1]])
+      const coord_arr = [former_coords, new_coords];
+      route[count] = new LineString(coord_arr);
+      position[count] = new Point(route[count].getFirstCoordinate())
+      const routeFeature = new Feature({
+        type: 'route',
+        geometry: route[count],
+      });
+
+      //featuresLayer.getSource().addFeature(routeFeature)
+
+      features_all[count].setGeometry(new Point(fromLonLat([coord[0], coord[1]])));
+      
+      count++;
+    }
+    // featuresLayer.getSource().addFeature(geoMarker);
+
+    // start animating until final point is reached - unstable, don't uncomment unless you're ok with it breaking
+    // startAnimation();
+    // stopAnimation();
+
+    //update();
+  }
+
+  function startAnimation() {
+    animating = true;
+    lastTime = Date.now();
+    featuresLayer.on('postrender', moveFeature);
+    // hide geoMarker and trigger map render through change event
+    // geoMarker.setGeometry(null);
+    console.log('starting animation...')
+  }
+
+  function stopAnimation() {
+    animating = false;
+
+    // Keep marker at current animation position
+    // geoMarker.setGeometry(position);
+    featuresLayer.un('postrender', moveFeature);
+  }
+
+  function moveFeature(event) {
+    for (let count in route != undefined){
+      //console.log('Distance: ' + distance);
+      const speed = 0.01;
+      const time = event.frameState.time;
+      const elapsedTime = time - lastTime;
+      distance[count] = distance + (speed * elapsedTime);
+      console.log('Distance: ' + distance[count]);
+      lastTime = time;
+
+      const currentCoordinate = route[count].getCoordinateAt(distance[count]);
+      position[count].setCoordinates(currentCoordinate);
+      const vectorContext = getVectorContext(event);
+      //vectorContext.setStyle(styles.geoMarker);
+      vectorContext.drawGeometry(position[count]);
+      // tell OpenLayers to continue the postrender animation
+      if (distance[count] <= 1)
+        map.render();
+    }
+  }
+
+  // Test function that simulates the reception of data from the locations
+  // sent by the tactical pack
+  // - number_times controls the amount of waves of sent locations
+  async function simulate (number_times=3) {
+    let NUMBER_POINTS = 30;
+    let run_number_times = number_times;
+    var json_data = {};
+    const timer = ms => new Promise(res => setTimeout(res, ms))
+
+    var count = 0;
+    var extraLat = 0;
+    while (count < run_number_times){
+        // reset data
+        json_data = {};
+        json_data['type'] = 'LineString';
+        json_data['coordinates'] = [];
+
+        // populate data with random numbers
+        for(let i = 0; i < NUMBER_POINTS; i++){
+          // random numbers for now
+          var latitude = getRandomNumber(sampleLat + extraLat, sampleLatRef);
+          var longitude = getRandomNumber(sampleLong, sampleLongRef);
+          var coord_set = [latitude, longitude, 449.2];
+          json_data['coordinates'].push(coord_set);
+        }
+
+        console.log(json_data);
+
+        //send data off to update locations
+        updateLocation(json_data)
+        
+        //wait 2 seconds before sending new location data
+        await timer(2000);
+        count += 1;
+        extraLat += 0.3;
+    }
   }
 
 
@@ -255,7 +431,7 @@ function MapWrapper(props) {
     <div>
 
       <div>
-        <Card selectTeam1={selectTeam1} selectTeam2={selectTeam2} selectTeam3={selectTeam3}/>
+        <Card update={update} simulate={simulate}/>
       </div>
       
       <div ref={mapElement} className="map-container"></div>
