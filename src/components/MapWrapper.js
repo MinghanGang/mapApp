@@ -8,7 +8,7 @@ import TileLayer from 'ol/layer/Tile'
 import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import XYZ from 'ol/source/XYZ'
-import {transform, fromLonLat} from 'ol/proj'
+import {transform, fromLonLat, get} from 'ol/proj'
 import {toStringXY} from 'ol/coordinate';
 
 import {Circle as CircleStyle, Fill, Icon, Stroke, Style} from 'ol/style';
@@ -20,6 +20,7 @@ import { Feature } from 'ol';
 import Card from './DropdownMenu'
 import Text from 'ol/style/Text';
 import { createOrUpdate } from 'ol/tilecoord';
+import { makeRegular } from 'ol/geom/Polygon';
 
 function MapWrapper(props) {
 
@@ -33,6 +34,31 @@ function MapWrapper(props) {
 
   const TEAM_COUNT = 10;
   const MAX_MEMBER_COUNT = 500;
+
+  const styles = {
+    'route': new Style({
+      stroke: new Stroke({
+        width: 1,
+        color: [237, 0, 150, 0.0],  // the 0.0 makes it invisible
+      }),
+    }),
+    'icon': new Style({
+      image: new Icon({
+        anchor: [0.5, 1],
+        src: 'data/icon.png',
+      }),
+    }),
+    'geoMarker': new Style({
+      image: new CircleStyle({
+        radius: 7,
+        fill: new Fill({color: 'black'}),
+        stroke: new Stroke({
+          color: 'white',
+          width: 2,
+        }),
+      }),
+    }),
+  };
   
   // color the labels on the checkbox labels according to colorArray
   var num = 1;
@@ -51,20 +77,11 @@ function MapWrapper(props) {
   const sampleLongRef = 35.440643;
 
   // animation
+  const pointsPerMs = 0.003;
   let route = new Array(MAX_MEMBER_COUNT).fill(undefined);
-  let lastTime;
   let distance = new Array(MAX_MEMBER_COUNT).fill(0);
-  let animating = false;
-  let routeFeature = new Array(MAX_MEMBER_COUNT).fill(new Feature());
-  let startMarker = new Array(MAX_MEMBER_COUNT).fill(undefined);
-  let endMarker = new Array(MAX_MEMBER_COUNT).fill(undefined);
+  let routeFeature = new Array(MAX_MEMBER_COUNT).fill(undefined);
   let position = new Array(MAX_MEMBER_COUNT).fill(0);
-  const geoMarker = new Feature({
-    type: 'geoMarker',
-    geometry: new Point(30,30),
-  });
-
-  let vectorLayer;
 
   // coord for 3 teams
   // const [ pointsCoordT1, setPointsCoordT1 ] = useState()
@@ -92,12 +109,14 @@ function MapWrapper(props) {
         getRandomNumber(sampleLat,sampleLatRef), getRandomNumber(sampleLong, sampleLongRef)
         // -121.505173, 37.808917
       ])),
+      type: 'marker',
       number_point: i,
       team: Math.floor(i / TEAM_COUNT) + 1,
       is_captain: (i % 10 === 0)
     }));
   }
 
+  /*
   const features1 = [];
   for (i = 0; i < 10; i++) {
     features1.push(new Feature({
@@ -130,6 +149,7 @@ function MapWrapper(props) {
       number_point: i + 20
     }));
   }
+  */
 
   // initialize map on first render
   useEffect( () => {
@@ -238,6 +258,11 @@ function MapWrapper(props) {
   // - feature is the current feature being styled, 
   // - with attributes number_point, team, is_captain
   function styleFunction(feature){
+
+    if(styles[feature.get('type')]){
+      return styles[feature.get('type')];
+    }
+
     const number_point = feature.get('number_point');
     const team = feature.get('team');
     // console.log('Point ' + number_point + ': Team ' + team)
@@ -245,12 +270,15 @@ function MapWrapper(props) {
     var text = "Team " + team;
     var fill;
     var radius;
+    var yText;
     if(feature.get('is_captain')){
       fill = new Fill({color: 'black'});
       radius = 8;
+      yText = 15;
     } else {
       fill = new Fill({color: 'transparent'});
       radius = 4;
+      yText = 10;
     }
     return new Style({
       image: new CircleStyle({
@@ -261,7 +289,7 @@ function MapWrapper(props) {
       text: new Text({
         text: text,
         offsetX: 10,
-        offsetY: 10
+        offsetY: yText
       })
     })
   }
@@ -320,46 +348,59 @@ function MapWrapper(props) {
   // TODO: breaks if data['coordinates'] is longer than features??
   function updateLocation(data){
     let count = 0;
-    for (let coord of data['coordinates']){
-      
 
+    startAnimation();
+
+    for (let coord of data['coordinates']){
       // create a line between former and future points
       const former_coords = features_all[count].getGeometry().getCoordinates()
       const new_coords = fromLonLat([coord[0], coord[1]])
       const coord_arr = [former_coords, new_coords];
       route[count] = new LineString(coord_arr);
       position[count] = new Point(route[count].getFirstCoordinate())
-      const routeFeature = new Feature({
+      routeFeature[count] = new Feature({
         type: 'route',
         geometry: route[count],
       });
+      let start = Date.now();
+      routeFeature[count].set('start', start);
+      featuresLayer.getSource().addFeature(routeFeature[count]);
 
-      //featuresLayer.getSource().addFeature(routeFeature)
-
-      features_all[count].setGeometry(new Point(fromLonLat([coord[0], coord[1]])));
+      // features_all[count].setGeometry(new Point(fromLonLat([coord[0], coord[1]])));
       
       count++;
     }
     // featuresLayer.getSource().addFeature(geoMarker);
 
     // start animating until final point is reached - unstable, don't uncomment unless you're ok with it breaking
-    // startAnimation();
+    
     // stopAnimation();
 
     //update();
   }
 
   function startAnimation() {
-    animating = true;
-    lastTime = Date.now();
     featuresLayer.on('postrender', moveFeature);
     // hide geoMarker and trigger map render through change event
     // geoMarker.setGeometry(null);
     console.log('starting animation...')
   }
 
+  function checkForStopAnimation(routeArr) {
+    let finished = true;
+    for (let count = 0; routeArr[count] != undefined; count++){
+      if(!routeFeature[count].get('finished')){
+        finished = false;
+      }
+    }
+
+    return finished;
+  }
+
   function stopAnimation() {
-    animating = false;
+    distance.fill(0);
+    position.fill(0);
+    routeFeature.fill(undefined);
 
     // Keep marker at current animation position
     // geoMarker.setGeometry(position);
@@ -367,24 +408,35 @@ function MapWrapper(props) {
   }
 
   function moveFeature(event) {
-    for (let count in route != undefined){
-      //console.log('Distance: ' + distance);
-      const speed = 0.01;
-      const time = event.frameState.time;
-      const elapsedTime = time - lastTime;
-      distance[count] = distance + (speed * elapsedTime);
-      console.log('Distance: ' + distance[count]);
-      lastTime = time;
+    const vectorContext = getVectorContext(event);
 
-      const currentCoordinate = route[count].getCoordinateAt(distance[count]);
-      position[count].setCoordinates(currentCoordinate);
-      const vectorContext = getVectorContext(event);
-      //vectorContext.setStyle(styles.geoMarker);
-      vectorContext.drawGeometry(position[count]);
-      // tell OpenLayers to continue the postrender animation
-      if (distance[count] <= 1)
-        map.render();
+    for (let count = 0; routeFeature[count] != undefined; count++){
+      if(!routeFeature[count].get('finished')){
+        const elapsedTime = event.frameState.time - routeFeature[count].get('start');
+
+        if(elapsedTime >= 0){
+          distance[count] = (pointsPerMs * elapsedTime);
+          const currentCoordinate = route[count].getCoordinateAt(distance[count]);
+          if(distance[count] >= 1){
+            routeFeature[count].set('finished', true);
+            features_all[count].getGeometry().setCoordinates(position[count]);
+          }
+
+          features_all[count].getGeometry().setCoordinates(currentCoordinate);
+
+          vectorContext.drawGeometry(features_all[count].getGeometry());     
+        }   
+      }   
     }
+    //check to see if all animation is complete
+    if(checkForStopAnimation(routeFeature)){
+      stopAnimation();
+    }
+    else{
+      // tell OpenLayers to continue the postrender animation
+      map.render();
+    }
+    
   }
 
   // Test function that simulates the reception of data from the locations
