@@ -21,6 +21,7 @@ import Card from './DropdownMenu'
 import Text from 'ol/style/Text';
 import { createOrUpdate } from 'ol/tilecoord';
 import { makeRegular } from 'ol/geom/Polygon';
+import { fromString } from 'ol/color';
 
 function MapWrapper(props) {
 
@@ -63,7 +64,7 @@ function MapWrapper(props) {
   // color the labels on the checkbox labels according to colorArray
   var num = 1;
   var label_id = 'Team' + num;
-  while(document.getElementById(label_id) != undefined){
+  while(document.getElementById(label_id) !== null){
     document.getElementById(label_id).style.color = colorArray[num-1];
 
     num++;
@@ -317,7 +318,7 @@ function MapWrapper(props) {
     //get checkbox_count
     var i = 1;
     var check_id = 'Team' + i + 'Check';
-    while(document.getElementById(check_id) != undefined){
+    while(document.getElementById(check_id) !== null){
       const checked = document.getElementById(check_id).checked;
       if(checked){ checkedArray.push(i) }
 
@@ -330,7 +331,7 @@ function MapWrapper(props) {
 
     // zoom in on the selected team
     featuresLayer.once('change', function() {
-      if(zoom_to != -1 && checkedArray.indexOf(zoom_to) != -1){
+      if(zoom_to !== -1 && checkedArray.indexOf(zoom_to) !== -1){
         var view = map.getView();
         view.animate({
           center: features_all[(zoom_to - 1)*TEAM_COUNT].getGeometry().getCoordinates(),
@@ -388,7 +389,7 @@ function MapWrapper(props) {
 
   function checkForStopAnimation(routeArr) {
     let finished = true;
-    for (let count = 0; routeArr[count] != undefined; count++){
+    for (let count = 0; routeArr[count] !== undefined; count++){
       if(!routeFeature[count].get('finished')){
         finished = false;
       }
@@ -410,7 +411,7 @@ function MapWrapper(props) {
   function moveFeature(event) {
     const vectorContext = getVectorContext(event);
 
-    for (let count = 0; routeFeature[count] != undefined; count++){
+    for (let count = 0; routeFeature[count] !== undefined; count++){
       if(!routeFeature[count].get('finished')){
         const elapsedTime = event.frameState.time - routeFeature[count].get('start');
 
@@ -470,8 +471,8 @@ function MapWrapper(props) {
         //send data off to update locations
         updateLocation(json_data)
         
-        //wait 2 seconds before sending new location data
-        await timer(2000);
+        //wait some amount seconds before sending new location data
+        await timer(getRandomNumber(1000, 3000));
         count += 1;
         extraLat += 0.3;
     }
