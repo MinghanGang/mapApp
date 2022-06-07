@@ -12,7 +12,6 @@ class Card extends Component {
     this.closeMenu = this.closeMenu.bind(this);
   }
   
-  //not needed any longer
   showMenu(event) {
     event.preventDefault();
     
@@ -21,7 +20,6 @@ class Card extends Component {
     });
   }
   
-  //not needed
   closeMenu(event) {
     
     if (!this.dropdownMenu.contains(event.target)) {

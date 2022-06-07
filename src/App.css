@@ -33,3 +33,15 @@
 .clicked-coord-label p {
   margin: 10px;
 }
+
+.history-label{
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  background: white;
+  border-radius: 5px;
+}
+
+.history-label p {
+  margin: 10px;
+}

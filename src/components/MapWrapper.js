@@ -29,6 +29,9 @@ function MapWrapper(props) {
   const [ map, setMap ] = useState()
   const [ featuresLayer, setFeaturesLayer ] = useState()
   const [ selectedCoord , setSelectedCoord ] = useState()
+  const [ selectedPerson , setselectedPerson ] = useState()
+  const [ selectedSerial , setselectedSerial ] = useState()
+  const [ selectedHistory , setselectedHistory ] = useState()
 
   // array of team colors
   const colorArray = ['red', 'blue', 'green', 'black']
@@ -113,7 +116,8 @@ function MapWrapper(props) {
       type: 'marker',
       number_point: i,
       team: Math.floor(i / TEAM_COUNT) + 1,
-      is_captain: (i % 10 === 0)
+      is_captain: (i % 10 === 0),
+      serial_number: 0,
     }));
   }
 
@@ -203,7 +207,15 @@ function MapWrapper(props) {
     })
 
     // set map onclick handler
-    // initialMap.on('click', handleMapClick)
+    initialMap.on('click', handleMapClick)
+
+    //---------------------------------------------------------------------------------
+    // For some reason hovering breaks the movement/animation of the points on the map,
+    // along with all rendering (serial number doesn't update)
+    // Leaving off for now until a solution is found or hovering is essential
+    //---------------------------------------------------------------------------------
+    // initialMap.on('pointermove', handleMapHover)
+
     // initalFeaturesLayer.on('postrender', handleLayerClick)
 
     // save map and vector layer references to state
@@ -235,10 +247,23 @@ function MapWrapper(props) {
 
   },[])*/
 
+  const getPersonStr = (feature) => {
+    let feature_str = 'Team ' + feature.get('team') + ' member ' + feature.get('number_point');
+    if(feature.get('is_captain')){
+      feature_str = 'Team ' + feature.get('team') + ' Captain';
+    }
+    return feature_str;
+  }
+
   // map click handler
   // not used currently
   const handleMapClick = (event) => {
-    
+    // reset box so unhovered items don't keep showing
+    if(selectedPerson !== ''){
+      setselectedPerson('');
+      setselectedSerial('');
+    }
+
     // get clicked coordinate using mapRef to access current React state inside OpenLayers callback
     //  https://stackoverflow.com/a/60643670
     const clickedCoord = mapRef.current.getCoordinateFromPixel(event.pixel);
@@ -251,6 +276,42 @@ function MapWrapper(props) {
     // set React state
     setSelectedCoord( transormedCoord )
     
+    // show history
+    mapRef.current.forEachFeatureAtPixel(event.pixel, function (feature) {
+      let feature_str = getPersonStr(feature);
+      setselectedHistory('History for: ' + feature_str);
+
+      setselectedPerson( feature_str );
+      setselectedSerial( 'Serial Number: ' + feature.get('serial_number') );
+    })  
+  }
+
+  const handleMapHover = (event) => {
+
+    // reset box so unhovered items don't keep showing
+    if(selectedPerson !== ''){
+      setselectedPerson('');
+      setselectedSerial('');
+    }
+
+    // get clicked coordinate using mapRef to access current React state inside OpenLayers callback
+    //  https://stackoverflow.com/a/60643670
+    const clickedCoord = mapRef.current.getCoordinateFromPixel(event.pixel);
+    console.log('1')
+    
+
+    // transform coord to EPSG 4326 standard Lat Long
+    const transormedCoord = transform(clickedCoord, 'EPSG:3857', 'EPSG:4326')
+
+    // set React state
+    setSelectedCoord( transormedCoord )  
+
+    mapRef.current.forEachFeatureAtPixel(event.pixel, function (feature) {
+      // console.log('Team ' + feature.get('team') + ' member ' + feature.get('number_point'));
+      let feature_str = getPersonStr(feature);
+      setselectedPerson( feature_str );
+      setselectedSerial( 'Serial Number: ' + feature.get('serial_number') );
+    })
   }
 
   // Function that dictates how each location point will be styled
@@ -258,7 +319,7 @@ function MapWrapper(props) {
   // Fill/Radius depends on captain status
   // - feature is the current feature being styled, 
   // - with attributes number_point, team, is_captain
-  function styleFunction(feature){
+  function styleFunction(feature) {
 
     if(styles[feature.get('type')]){
       return styles[feature.get('type')];
@@ -287,11 +348,11 @@ function MapWrapper(props) {
         fill: fill,
         stroke: stroke,
       }),
-      text: new Text({
-        text: text,
-        offsetX: 10,
-        offsetY: yText
-      })
+      // text: new Text({
+      //   text: text,
+      //   offsetX: 10,
+      //   offsetY: yText
+      // })
     })
   }
 
@@ -304,6 +365,14 @@ function MapWrapper(props) {
       let feature_team = Math.floor(i / TEAM_COUNT) + 1
       if(checkedArray.indexOf(feature_team) !== -1){
         features.push(features_all[i]);
+      }
+    }
+
+    // leave the route features if they exist
+    const features_and_routes = featuresLayer.getSource().getFeatures();
+    for(let i = 0; i < features_and_routes.length; i++){
+      if(features_and_routes[i].get('type') === 'route'){
+        features.push(features_and_routes[i]);
       }
     }
     return features;
@@ -327,11 +396,24 @@ function MapWrapper(props) {
     }
     console.log('Checked Teams: ' + checkedArray);
     const features = getFeatures(checkedArray);
+
+    let debug_str = 'Prior Features: ';
+    for(let feature of featuresLayer.getSource().getFeatures()){
+      debug_str += feature.getGeometry().getCoordinates() + ', '
+    }
+    console.log(debug_str);
+
+    debug_str = 'Current Features: ';
+    for(let feature of features){
+      debug_str += feature.getGeometry().getCoordinates() + ', '
+    }
+    console.log(debug_str);
+
     const source = new VectorSource({features: features});
 
     // zoom in on the selected team
     featuresLayer.once('change', function() {
-      if(zoom_to !== -1 && checkedArray.indexOf(zoom_to) !== -1){
+      if(zoom_to !== -1 && checkedArray.indexOf(zoom_to) !== -1 && checkedArray.length === 1){
         var view = map.getView();
         view.animate({
           center: features_all[(zoom_to - 1)*TEAM_COUNT].getGeometry().getCoordinates(),
@@ -353,6 +435,11 @@ function MapWrapper(props) {
     startAnimation();
 
     for (let coord of data['coordinates']){
+      console.log('Count: ' + count);
+      //get serial number
+      features_all[count].set('serial_number', data['serial_number'][count]);
+      console.log('Serial: ' + features_all[count].get('serial_number'));
+
       // create a line between former and future points
       const former_coords = features_all[count].getGeometry().getCoordinates()
       const new_coords = fromLonLat([coord[0], coord[1]])
@@ -367,17 +454,11 @@ function MapWrapper(props) {
       routeFeature[count].set('start', start);
       featuresLayer.getSource().addFeature(routeFeature[count]);
 
+      // this is done when stopping the animation now
       // features_all[count].setGeometry(new Point(fromLonLat([coord[0], coord[1]])));
       
       count++;
     }
-    // featuresLayer.getSource().addFeature(geoMarker);
-
-    // start animating until final point is reached - unstable, don't uncomment unless you're ok with it breaking
-    
-    // stopAnimation();
-
-    //update();
   }
 
   function startAnimation() {
@@ -419,6 +500,7 @@ function MapWrapper(props) {
           distance[count] = (pointsPerMs * elapsedTime);
           const currentCoordinate = route[count].getCoordinateAt(distance[count]);
           if(distance[count] >= 1){
+            console.log('finished');
             routeFeature[count].set('finished', true);
             features_all[count].getGeometry().setCoordinates(position[count]);
           }
@@ -456,14 +538,17 @@ function MapWrapper(props) {
         json_data = {};
         json_data['type'] = 'LineString';
         json_data['coordinates'] = [];
+        json_data['serial_number'] = [];
 
         // populate data with random numbers
         for(let i = 0; i < NUMBER_POINTS; i++){
           // random numbers for now
           var latitude = getRandomNumber(sampleLat + extraLat, sampleLatRef);
           var longitude = getRandomNumber(sampleLong, sampleLongRef);
+          var serial_number = Math.floor(getRandomNumber(10000000, 99999999));
           var coord_set = [latitude, longitude, 449.2];
           json_data['coordinates'].push(coord_set);
+          json_data['serial_number'].push(serial_number);
         }
 
         console.log(json_data);
@@ -490,7 +575,12 @@ function MapWrapper(props) {
       <div ref={mapElement} className="map-container"></div>
       
       <div className="clicked-coord-label">
+        <p>{ (selectedPerson) }</p>
+        <p>{ (selectedSerial) }</p>
         <p>{ (selectedCoord) ? toStringXY(selectedCoord, 5) : '' }</p>
+      </div>
+      <div className="history-label">
+        <p>{ (selectedHistory) }</p>
       </div>
 
     </div>
