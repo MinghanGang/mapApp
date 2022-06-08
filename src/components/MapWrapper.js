@@ -23,21 +23,52 @@ import { createOrUpdate } from 'ol/tilecoord';
 import { makeRegular } from 'ol/geom/Polygon';
 import { fromString } from 'ol/color';
 
+// get a sample dictionary of serials
+import { serial_numbers } from './StartingSerial.js';
+
+// sample coords used
+const sampleLat = -120.420219;
+const sampleLatRef = -118.807386;
+const sampleLong = 34.646236;
+const sampleLongRef = 35.440643;
+
+// array of team colors
+const colorArray = ['red', 'blue', 'green', 'black']
+
+const TEAM_COUNT = 10;
+const MAX_MEMBER_COUNT = 500;
+
+// compute the features
+const getRandomNumber = function (min, ref) {
+  return Math.random() * (ref - min) + min;
+}
+
+let i;
+let point_features = [];
+for (i = 0; i < 30; i++) {
+  point_features.push(new Feature({
+    geometry: new Point(fromLonLat([
+      getRandomNumber(sampleLat,sampleLatRef), getRandomNumber(sampleLong, sampleLongRef)
+      // -121.505173, 37.808917
+    ])),
+    type: 'marker',
+    number_point: i,
+    team: Math.floor(i / TEAM_COUNT) + 1,
+    is_captain: (i % 10 === 0),
+    serial_number: serial_numbers[i],
+  }));
+}
+
 function MapWrapper(props) {
 
   // set intial state
   const [ map, setMap ] = useState()
   const [ featuresLayer, setFeaturesLayer ] = useState()
   const [ selectedCoord , setSelectedCoord ] = useState()
+  const [ selectedPersonCoord , setselectedPersonCoord ] = useState()
   const [ selectedPerson , setselectedPerson ] = useState()
   const [ selectedSerial , setselectedSerial ] = useState()
   const [ selectedHistory , setselectedHistory ] = useState()
-
-  // array of team colors
-  const colorArray = ['red', 'blue', 'green', 'black']
-
-  const TEAM_COUNT = 10;
-  const MAX_MEMBER_COUNT = 500;
 
   const styles = {
     'route': new Style({
@@ -74,12 +105,6 @@ function MapWrapper(props) {
     label_id = 'Team' + num;
   }
 
-  // sample coords used
-  const sampleLat = -120.420219;
-  const sampleLatRef = -118.807386;
-  const sampleLong = 34.646236;
-  const sampleLongRef = 35.440643;
-
   // animation
   const pointsPerMs = 0.003;
   let route = new Array(MAX_MEMBER_COUNT).fill(undefined);
@@ -99,27 +124,6 @@ function MapWrapper(props) {
   //  https://stackoverflow.com/a/60643670
   const mapRef = useRef()
   mapRef.current = map
-
-  // compute the features
-  const getRandomNumber = function (min, ref) {
-    return Math.random() * (ref - min) + min;
-  }
-
-  let i;
-  const features_all = [];
-  for (i = 0; i < 30; i++) {
-    features_all.push(new Feature({
-      geometry: new Point(fromLonLat([
-        getRandomNumber(sampleLat,sampleLatRef), getRandomNumber(sampleLong, sampleLongRef)
-        // -121.505173, 37.808917
-      ])),
-      type: 'marker',
-      number_point: i,
-      team: Math.floor(i / TEAM_COUNT) + 1,
-      is_captain: (i % 10 === 0),
-      serial_number: 0,
-    }));
-  }
 
   /*
   const features1 = [];
@@ -214,7 +218,7 @@ function MapWrapper(props) {
     // along with all rendering (serial number doesn't update)
     // Leaving off for now until a solution is found or hovering is essential
     //---------------------------------------------------------------------------------
-    // initialMap.on('pointermove', handleMapHover)
+    initialMap.on('pointermove', handleMapHover)
 
     // initalFeaturesLayer.on('postrender', handleLayerClick)
 
@@ -257,32 +261,11 @@ function MapWrapper(props) {
 
   // map click handler
   // not used currently
-  const handleMapClick = (event) => {
-    // reset box so unhovered items don't keep showing
-    if(selectedPerson !== ''){
-      setselectedPerson('');
-      setselectedSerial('');
-    }
-
-    // get clicked coordinate using mapRef to access current React state inside OpenLayers callback
-    //  https://stackoverflow.com/a/60643670
-    const clickedCoord = mapRef.current.getCoordinateFromPixel(event.pixel);
-    console.log('1')
-    
-
-    // transform coord to EPSG 4326 standard Lat Long
-    const transormedCoord = transform(clickedCoord, 'EPSG:3857', 'EPSG:4326')
-
-    // set React state
-    setSelectedCoord( transormedCoord )
-    
+  const handleMapClick = (event) => {   
     // show history
     mapRef.current.forEachFeatureAtPixel(event.pixel, function (feature) {
       let feature_str = getPersonStr(feature);
       setselectedHistory('History for: ' + feature_str);
-
-      setselectedPerson( feature_str );
-      setselectedSerial( 'Serial Number: ' + feature.get('serial_number') );
     })  
   }
 
@@ -292,6 +275,7 @@ function MapWrapper(props) {
     if(selectedPerson !== ''){
       setselectedPerson('');
       setselectedSerial('');
+      setselectedPersonCoord('');
     }
 
     // get clicked coordinate using mapRef to access current React state inside OpenLayers callback
@@ -307,10 +291,15 @@ function MapWrapper(props) {
     setSelectedCoord( transormedCoord )  
 
     mapRef.current.forEachFeatureAtPixel(event.pixel, function (feature) {
-      // console.log('Team ' + feature.get('team') + ' member ' + feature.get('number_point'));
       let feature_str = getPersonStr(feature);
+
       setselectedPerson( feature_str );
       setselectedSerial( 'Serial Number: ' + feature.get('serial_number') );
+
+      const transormedCoord = transform(feature.getGeometry().getCoordinates(), 'EPSG:3857', 'EPSG:4326');
+
+      // set React state
+      setselectedPersonCoord( transormedCoord );
     })
   }
 
@@ -356,15 +345,24 @@ function MapWrapper(props) {
     })
   }
 
-  // Gets the features that should be drawn from features_all
+  function matchSerial(feature_arr, serial_number){
+    for(let i = 0; i < feature_arr.length; i++){
+      if(feature_arr[i].get('serial_number') === serial_number){
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  // Gets the features that should be drawn from point_features
   // - checkedArray is an array containing the team numbers to draw
   function getFeatures(checkedArray){
     const features = [];
 
-    for(let i = 0; i < features_all.length; i++){
-      let feature_team = Math.floor(i / TEAM_COUNT) + 1
+    for(let i = 0; i < point_features.length; i++){
+      let feature_team = point_features[i].get('team');
       if(checkedArray.indexOf(feature_team) !== -1){
-        features.push(features_all[i]);
+        features.push(point_features[i]);
       }
     }
 
@@ -384,6 +382,11 @@ function MapWrapper(props) {
   function update(zoom_to=-1) {
     const checkedArray = [];
 
+    //print point_features
+    for(let feature of point_features){
+      console.log('Team ' + feature.get('team') + ': ' + feature.get('type') + ' ' + feature.get('serial_number'));
+    }
+
     //get checkbox_count
     var i = 1;
     var check_id = 'Team' + i + 'Check';
@@ -399,13 +402,13 @@ function MapWrapper(props) {
 
     let debug_str = 'Prior Features: ';
     for(let feature of featuresLayer.getSource().getFeatures()){
-      debug_str += feature.getGeometry().getCoordinates() + ', '
+      debug_str += feature.getGeometry().getCoordinates() + ': ' + feature.get('type') + ', '
     }
     console.log(debug_str);
 
     debug_str = 'Current Features: ';
     for(let feature of features){
-      debug_str += feature.getGeometry().getCoordinates() + ', '
+      debug_str += feature.getGeometry().getCoordinates() + ': ' + feature.get('type') + ', '
     }
     console.log(debug_str);
 
@@ -416,7 +419,7 @@ function MapWrapper(props) {
       if(zoom_to !== -1 && checkedArray.indexOf(zoom_to) !== -1 && checkedArray.length === 1){
         var view = map.getView();
         view.animate({
-          center: features_all[(zoom_to - 1)*TEAM_COUNT].getGeometry().getCoordinates(),
+          center: point_features[(zoom_to - 1)*TEAM_COUNT].getGeometry().getCoordinates(),
           zoom: 7
         });
       }
@@ -435,27 +438,27 @@ function MapWrapper(props) {
     startAnimation();
 
     for (let coord of data['coordinates']){
-      console.log('Count: ' + count);
-      //get serial number
-      features_all[count].set('serial_number', data['serial_number'][count]);
-      console.log('Serial: ' + features_all[count].get('serial_number'));
+      // console.log('Count: ' + count);
+      // match serial number
+      let featureIndex = matchSerial(point_features, data['serial_number'][count]);
+      
 
       // create a line between former and future points
-      const former_coords = features_all[count].getGeometry().getCoordinates()
+      const former_coords = point_features[featureIndex].getGeometry().getCoordinates()
       const new_coords = fromLonLat([coord[0], coord[1]])
       const coord_arr = [former_coords, new_coords];
-      route[count] = new LineString(coord_arr);
-      position[count] = new Point(route[count].getFirstCoordinate())
-      routeFeature[count] = new Feature({
+      route[featureIndex] = new LineString(coord_arr);
+      position[featureIndex] = new Point(route[featureIndex].getFirstCoordinate())
+      routeFeature[featureIndex] = new Feature({
         type: 'route',
-        geometry: route[count],
+        geometry: route[featureIndex],
       });
       let start = Date.now();
-      routeFeature[count].set('start', start);
-      featuresLayer.getSource().addFeature(routeFeature[count]);
+      routeFeature[featureIndex].set('start', start);
+      featuresLayer.getSource().addFeature(routeFeature[featureIndex]);
 
       // this is done when stopping the animation now
-      // features_all[count].setGeometry(new Point(fromLonLat([coord[0], coord[1]])));
+      // point_features[count].setGeometry(new Point(fromLonLat([coord[0], coord[1]])));
       
       count++;
     }
@@ -479,14 +482,27 @@ function MapWrapper(props) {
     return finished;
   }
 
+  function remove_feature_type(feature_arr, type){
+    for(let i = 0; i < feature_arr.length; i++){
+      if(feature_arr[i].get('type') !== type){
+        console.log('type: ' + feature_arr[i].get('type'));
+      }
+      else{
+        featuresLayer.getSource().removeFeature(feature_arr[i]);
+        console.log('Removed route: ' + i);
+      }
+    }
+  }
+
   function stopAnimation() {
+    featuresLayer.un('postrender', moveFeature);
+
     distance.fill(0);
     position.fill(0);
     routeFeature.fill(undefined);
 
-    // Keep marker at current animation position
-    // geoMarker.setGeometry(position);
-    featuresLayer.un('postrender', moveFeature);
+    // remove routes from the features list
+    remove_feature_type(featuresLayer.getSource().getFeatures(), 'route');
   }
 
   function moveFeature(event) {
@@ -500,14 +516,14 @@ function MapWrapper(props) {
           distance[count] = (pointsPerMs * elapsedTime);
           const currentCoordinate = route[count].getCoordinateAt(distance[count]);
           if(distance[count] >= 1){
-            console.log('finished');
+            // console.log('finished');
             routeFeature[count].set('finished', true);
-            features_all[count].getGeometry().setCoordinates(position[count]);
+            point_features[count].getGeometry().setCoordinates(position[count]);
           }
+          // console.log('moving');
+          point_features[count].getGeometry().setCoordinates(currentCoordinate);
 
-          features_all[count].getGeometry().setCoordinates(currentCoordinate);
-
-          vectorContext.drawGeometry(features_all[count].getGeometry());     
+          vectorContext.drawGeometry(point_features[count].getGeometry());     
         }   
       }   
     }
@@ -545,10 +561,9 @@ function MapWrapper(props) {
           // random numbers for now
           var latitude = getRandomNumber(sampleLat + extraLat, sampleLatRef);
           var longitude = getRandomNumber(sampleLong, sampleLongRef);
-          var serial_number = Math.floor(getRandomNumber(10000000, 99999999));
           var coord_set = [latitude, longitude, 449.2];
           json_data['coordinates'].push(coord_set);
-          json_data['serial_number'].push(serial_number);
+          json_data['serial_number'].push(serial_numbers[i]);
         }
 
         console.log(json_data);
@@ -574,13 +589,16 @@ function MapWrapper(props) {
       
       <div ref={mapElement} className="map-container"></div>
       
-      <div className="clicked-coord-label">
+      <div className="clicked-person-label">
         <p>{ (selectedPerson) }</p>
         <p>{ (selectedSerial) }</p>
-        <p>{ (selectedCoord) ? toStringXY(selectedCoord, 5) : '' }</p>
+        <p>{ (selectedPersonCoord) ? toStringXY(selectedPersonCoord, 5) : '' }</p>
       </div>
       <div className="history-label">
         <p>{ (selectedHistory) }</p>
+      </div>
+      <div className='clicked-coord-label'>
+        <p>{ (selectedCoord) ? toStringXY(selectedCoord, 5) : '' }</p>
       </div>
 
     </div>

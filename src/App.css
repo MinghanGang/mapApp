@@ -25,12 +25,24 @@
 .clicked-coord-label{
   position: absolute;
   right: 0;
-  bottom: 0;
+  top: 0;
   background: white;
   border-radius: 5px;
 }
 
 .clicked-coord-label p {
+  margin: 10px;
+}
+
+.clicked-person-label{
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  background: white;
+  border-radius: 5px;
+}
+
+.clicked-person-label p {
   margin: 10px;
 }
 
